@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location-Based AR Treasure Hunt</title>
+    
+    <!-- A-Frame and AR.js CDN -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.0/aframe/build/aframe-ar.min.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            overflow: hidden;
+        }
+
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: white;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid #f39c12;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 18px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .loading-progress {
+            width: 300px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .loading-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #f39c12, #e74c3c);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* UI Overlay */
+        .ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .status-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            max-width: 300px;
+            pointer-events: auto;
+        }
+
+        .treasure-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            pointer-events: auto;
+        }
+
+        .distance-indicator {
+            font-size: 18px;
+            font-weight: bold;
+            color: #f39c12;
+            margin: 10px 0;
+        }
+
+        .interaction-button {
+            background: linear-gradient(45deg, #f39c12, #e67e22);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .interaction-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(243, 156, 18, 0.4);
+        }
+
+        .interaction-button:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .permission-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .permission-modal h3 {
+            color: #f39c12;
+            margin-bottom: 20px;
+        }
+
+        .permission-button {
+            background: linear-gradient(45deg, #27ae60, #2ecc71);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px;
+        }
+
+        .coordinates-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 5px;
+            width: 120px;
+        }
+
+        .coordinates-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .treasure-found {
+            background: linear-gradient(45deg, #27ae60, #2ecc71);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loadingText">Initializing AR Treasure Hunt...</div>
+        <div class="loading-progress">
+            <div class="loading-bar" id="loadingBar"></div>
+        </div>
+    </div>
+
+    <!-- Permission Modal -->
+    <div class="permission-modal" id="permissionModal">
+        <h3>🗺️ Location Access Required</h3>
+        <p>This AR treasure hunt needs access to your location to place treasures at specific GPS coordinates.</p>
+        <p><strong>📱 Safari Users:</strong> If location access is denied, follow these steps:</p>
+        <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; margin: 15px 0; text-align: left;">
+            <p>1. Tap the <strong>AA</strong> button in Safari's address bar</p>
+            <p>2. Select <strong>"Website Settings"</strong></p>
+            <p>3. Enable <strong>"Location"</strong> permission</p>
+            <p>4. Refresh the page</p>
+        </div>
+        <p>Your location data stays on your device and is not shared.</p>
+        <button class="permission-button" onclick="requestLocationPermission()">Allow Location Access</button>
+        <button class="permission-button" onclick="showSafariInstructions()" style="background: linear-gradient(45deg, #3498db, #2980b9);">Safari Help</button>
+        <div style="margin-top: 20px;">
+            <p>Or set custom coordinates:</p>
+            <input type="number" class="coordinates-input" id="latInput" placeholder="Latitude" step="any">
+            <input type="number" class="coordinates-input" id="lngInput" placeholder="Longitude" step="any">
+            <br>
+            <button class="permission-button" onclick="useCustomCoordinates()">Use Custom Location</button>
+        </div>
+    </div>
+
+    <!-- UI Overlay -->
+    <div class="ui-overlay">
+        <div class="status-panel" id="statusPanel">
+            <h4>🗺️ Location Status</h4>
+            <div id="locationStatus">Getting location...</div>
+            <div id="accuracyInfo"></div>
+            <div id="coordinatesInfo"></div>
+            <div id="currentPosition" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3);">
+                <strong>📍 Current Position:</strong><br>
+                <div id="currentLat">Lat: --</div>
+                <div id="currentLng">Lng: --</div>
+                <button onclick="forceLocationUpdate()" style="background: #3498db; color: white; border: none; padding: 5px 10px; border-radius: 3px; margin-top: 5px; font-size: 12px;">🔄 Update Location</button>
+            </div>
+        </div>
+
+        <div class="treasure-info" id="treasureInfo">
+            <h4>🏴‍☠️ Treasure Hunt</h4>
+            <div class="distance-indicator" id="distanceIndicator">Calculating distance...</div>
+            <div id="treasureStatus">Searching for treasures...</div>
+            <button class="interaction-button hidden" id="collectButton" onclick="collectTreasure()">
+                🎁 Collect Treasure!
+            </button>
+        </div>
+    </div>
+
+    <!-- A-Frame Scene -->
+    <a-scene 
+        vr-mode-ui="enabled: false" 
+        renderer="logarithmicDepthBuffer: true;" 
+        embedded 
+        arjs="sourceType: webcam; debugUIEnabled: false; trackingMethod: best;"
+        id="arScene">
+        
+        <!-- Camera -->
+        <a-entity camera></a-entity>
+        
+        <!-- AR Marker for testing (optional) -->
+        <a-marker preset="hiro" id="hiro-marker">
+            <a-box position="0 0.5 0" material="color: red;" scale="0.2 0.2 0.2"></a-box>
+        </a-marker>
+
+        <!-- Treasure Chest (will be positioned based on GPS) -->
+        <a-entity id="treasureChest" 
+                  gltf-model="url(./treasure_chest.glb)"
+                  scale="0.3 0.3 0.3"
+                  position="0 0 0"
+                  visible="false"
+                  animation__rotate="property: rotation; to: 0 360 0; loop: true; dur: 10000"
+                  animation__bounce="property: position; to: 0 0.2 0; dir: alternate; loop: true; dur: 2000">
+            <!-- Fallback treasure chest if GLB model not found -->
+            <a-box position="0 0 0" 
+                   width="1" 
+                   height="0.8" 
+                   depth="0.6" 
+                   material="color: #8B4513; metalness: 0.3; roughness: 0.7"
+                   visible="false"
+                   id="fallbackTreasure">
+            </a-box>
+            <a-cylinder position="0 0.4 0" 
+                        radius="0.5" 
+                        height="0.1" 
+                        material="color: #FFD700; metalness: 0.8; roughness: 0.2"
+                        visible="false"
+                        id="treasureLid">
+            </a-cylinder>
+        </a-entity>
+
+        <!-- Treasure glow effect -->
+        <a-entity id="treasureGlow" 
+                  geometry="primitive: sphere; radius: 2"
+                  material="color: #f39c12; transparent: true; opacity: 0.3"
+                  position="0 0 0"
+                  visible="false"
+                  animation__pulse="property: scale; to: 1.2 1.2 1.2; dir: alternate; loop: true; dur: 1500">
+        </a-entity>
+
+        <!-- Lighting -->
+        <a-light type="ambient" color="#404040"></a-light>
+        <a-light type="directional" position="0 1 0" color="#ffffff" intensity="0.8"></a-light>
+        <a-light type="point" position="0 2 0" color="#f39c12" intensity="0.5"></a-light>
+    </a-scene>
+
+    <script>
+        // Configuration
+        const TREASURE_LOCATIONS = [
+            {
+                id: 'treasure1',
+                name: 'Golden Treasure Chest',
+                latitude: 42.4500748,
+                longitude:  -76.4814641,
+                description: 'A mysterious treasure chest hidden in the city',
+                collected: false
+            }
+        ];
+
+        const PROXIMITY_THRESHOLD = 50; // meters
+        const COLLECTION_DISTANCE = 10; // meters
+
+        // Global variables
+        let userLocation = null;
+        let currentTreasure = null;
+        let watchId = null;
+        let isARReady = false;
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Initializing Location-Based AR Treasure Hunt');
+            updateLoadingText('Setting up AR system...');
+            
+            // Wait for A-Frame to be ready
+            const scene = document.getElementById('arScene');
+            scene.addEventListener('loaded', function() {
+                console.log('✅ A-Frame scene loaded');
+                isARReady = true;
+                updateLoadingText('AR system ready!');
+                
+                // Hide loading screen and show permission modal
+                setTimeout(() => {
+                    document.getElementById('loadingScreen').classList.add('hidden');
+                    document.getElementById('permissionModal').classList.remove('hidden');
+                }, 1000);
+            });
+        });
+
+        // Request location permission
+        function requestLocationPermission() {
+            console.log('📍 Requesting location permission...');
+            
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by this browser.');
+                return;
+            }
+
+            // Check if we're on Safari iOS
+            const isSafariIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && /Safari/.test(navigator.userAgent);
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            
+            if (isSafariIOS) {
+                // Show Safari-specific instructions
+                showSafariInstructions();
+                return;
+            }
+
+            const options = {
+                enableHighAccuracy: true,
+                timeout: 20000,
+                maximumAge: 0
+            };
+
+            // Show loading message
+            updateLoadingText('Getting your location...');
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    console.log('✅ Location permission granted');
+                    console.log('Position:', position);
+                    userLocation = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    };
+                    
+                    startLocationTracking();
+                    hidePermissionModal();
+                },
+                function(error) {
+                    console.error('❌ Location error:', error);
+                    console.error('Error code:', error.code);
+                    console.error('Error message:', error.message);
+                    
+                    if (isSafariIOS) {
+                        showSafariInstructions();
+                    } else if (isMobile) {
+                        showMobileLocationInstructions();
+                    } else {
+                        handleLocationError(error);
+                    }
+                },
+                options
+            );
+        }
+
+        // Show mobile-specific location instructions
+        function showMobileLocationInstructions() {
+            const modal = document.getElementById('permissionModal');
+            modal.innerHTML = `
+                <h3>📱 Mobile Location Setup</h3>
+                <p><strong>Location access was denied. To enable location:</strong></p>
+                <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin: 20px 0; text-align: left; font-size: 16px;">
+                    <p><strong>Chrome/Edge:</strong></p>
+                    <p>1. Tap the lock icon in the address bar</p>
+                    <p>2. Enable "Location" permission</p>
+                    <p>3. Refresh the page</p>
+                    <br>
+                    <p><strong>Safari:</strong></p>
+                    <p>1. Tap the AA button in the address bar</p>
+                    <p>2. Select "Website Settings"</p>
+                    <p>3. Enable "Location" permission</p>
+                    <p>4. Refresh the page</p>
+                </div>
+                <p style="color: #f39c12; font-weight: bold;">After enabling location, refresh the page!</p>
+                <button class="permission-button" onclick="location.reload()">Refresh Page</button>
+                <button class="permission-button" onclick="useCustomCoordinates()" style="background: linear-gradient(45deg, #7f8c8d, #95a5a6);">Use Custom Location Instead</button>
+            `;
+        }
+
+        // Show Safari-specific instructions
+        function showSafariInstructions() {
+            const modal = document.getElementById('permissionModal');
+            modal.innerHTML = `
+                <h3>📱 Safari Location Setup</h3>
+                <p><strong>To enable location access in Safari:</strong></p>
+                <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin: 20px 0; text-align: left; font-size: 16px;">
+                    <p><strong>Step 1:</strong> Tap the <strong>AA</strong> button in Safari's address bar (next to the URL)</p>
+                    <p><strong>Step 2:</strong> Select <strong>"Website Settings"</strong> from the menu</p>
+                    <p><strong>Step 3:</strong> Find <strong>"Location"</strong> and change it to <strong>"Allow"</strong></p>
+                    <p><strong>Step 4:</strong> Close this popup and refresh the page</p>
+                </div>
+                <p style="color: #f39c12; font-weight: bold;">After enabling location, refresh the page!</p>
+                <button class="permission-button" onclick="location.reload()">Refresh Page</button>
+                <button class="permission-button" onclick="useCustomCoordinates()" style="background: linear-gradient(45deg, #7f8c8d, #95a5a6);">Use Custom Location Instead</button>
+            `;
+        }
+
+        // Use custom coordinates
+        function useCustomCoordinates() {
+            const lat = parseFloat(document.getElementById('latInput').value);
+            const lng = parseFloat(document.getElementById('lngInput').value);
+            
+            if (isNaN(lat) || isNaN(lng)) {
+                alert('Please enter valid coordinates');
+                return;
+            }
+
+            userLocation = {
+                latitude: lat,
+                longitude: lng,
+                accuracy: 0
+            };
+
+            console.log('📍 Using custom coordinates:', userLocation);
+            startLocationTracking();
+            hidePermissionModal();
+        }
+
+        // Start continuous location tracking
+        function startLocationTracking() {
+            console.log('🔄 Starting location tracking...');
+            updateLocationStatus();
+            
+            const options = {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 2000
+            };
+
+            watchId = navigator.geolocation.watchPosition(
+                function(position) {
+                    console.log('📍 Location update received:', position);
+                    userLocation = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    };
+                    console.log('📍 Updated userLocation:', userLocation);
+                    updateLocationStatus();
+                    checkForTreasures();
+                },
+                function(error) {
+                    console.error('❌ Location tracking error:', error);
+                    console.error('Error code:', error.code);
+                    console.error('Error message:', error.message);
+                },
+                options
+            );
+            
+            console.log('✅ Location tracking started with watchId:', watchId);
+        }
+
+        // Update location status display
+        function updateLocationStatus() {
+            if (!userLocation) {
+                console.log('⚠️ No userLocation available for update');
+                return;
+            }
+
+            console.log('🔄 Updating location display with:', userLocation);
+
+            const statusDiv = document.getElementById('locationStatus');
+            const accuracyDiv = document.getElementById('accuracyInfo');
+            const coordsDiv = document.getElementById('coordinatesInfo');
+            const currentLatDiv = document.getElementById('currentLat');
+            const currentLngDiv = document.getElementById('currentLng');
+
+            if (statusDiv) statusDiv.innerHTML = '✅ Location acquired';
+            if (accuracyDiv) accuracyDiv.innerHTML = `Accuracy: ${userLocation.accuracy.toFixed(1)}m`;
+            if (coordsDiv) coordsDiv.innerHTML = `📍 ${userLocation.latitude.toFixed(6)}, ${userLocation.longitude.toFixed(6)}`;
+            
+            // Update current position display
+            if (currentLatDiv) currentLatDiv.innerHTML = `Lat: ${userLocation.latitude.toFixed(6)}`;
+            if (currentLngDiv) currentLngDiv.innerHTML = `Lng: ${userLocation.longitude.toFixed(6)}`;
+            
+            console.log('✅ Location display updated');
+        }
+
+        // Check for nearby treasures
+        function checkForTreasures() {
+            if (!userLocation) return;
+
+            for (let treasure of TREASURE_LOCATIONS) {
+                if (treasure.collected) continue;
+
+                const distance = calculateDistance(
+                    userLocation.latitude,
+                    userLocation.longitude,
+                    treasure.latitude,
+                    treasure.longitude
+                );
+
+                const distanceDiv = document.getElementById('distanceIndicator');
+                const statusDiv = document.getElementById('treasureStatus');
+                const collectBtn = document.getElementById('collectButton');
+
+                if (distance <= PROXIMITY_THRESHOLD) {
+                    currentTreasure = treasure;
+                    distanceDiv.innerHTML = `🎯 ${distance.toFixed(1)}m away`;
+                    statusDiv.innerHTML = `Found: ${treasure.name}`;
+                    
+                    if (distance <= COLLECTION_DISTANCE) {
+                        statusDiv.innerHTML = `🎁 ${treasure.name} - Close enough to collect!`;
+                        collectBtn.classList.remove('hidden');
+                        showTreasureInAR();
+                    } else {
+                        collectBtn.classList.add('hidden');
+                        hideTreasureInAR();
+                    }
+                } else {
+                    distanceDiv.innerHTML = `🔍 ${distance.toFixed(1)}m away`;
+                    statusDiv.innerHTML = 'Keep searching...';
+                    collectBtn.classList.add('hidden');
+                    hideTreasureInAR();
+                }
+            }
+        }
+
+        // Calculate distance between two GPS coordinates (Haversine formula)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Earth's radius in meters
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Show treasure in AR
+        function showTreasureInAR() {
+            if (!isARReady) return;
+
+            const treasure = document.getElementById('treasureChest');
+            const glow = document.getElementById('treasureGlow');
+            const fallbackTreasure = document.getElementById('fallbackTreasure');
+            const treasureLid = document.getElementById('treasureLid');
+            
+            // Check if GLB model loaded successfully
+            const gltfModel = treasure.components['gltf-model'];
+            if (!gltfModel || !gltfModel.data || gltfModel.data === '') {
+                // Use fallback treasure chest
+                console.log('Using fallback treasure chest');
+                fallbackTreasure.setAttribute('visible', 'true');
+                treasureLid.setAttribute('visible', 'true');
+            } else {
+                // Use GLB model
+                treasure.setAttribute('visible', 'true');
+            }
+            
+            glow.setAttribute('visible', 'true');
+            
+            // Position treasure in front of user
+            treasure.setAttribute('position', '0 1 -2');
+            glow.setAttribute('position', '0 1 -2');
+        }
+
+        // Hide treasure in AR
+        function hideTreasureInAR() {
+            const treasure = document.getElementById('treasureChest');
+            const glow = document.getElementById('treasureGlow');
+            const fallbackTreasure = document.getElementById('fallbackTreasure');
+            const treasureLid = document.getElementById('treasureLid');
+            
+            treasure.setAttribute('visible', 'false');
+            fallbackTreasure.setAttribute('visible', 'false');
+            treasureLid.setAttribute('visible', 'false');
+            glow.setAttribute('visible', 'false');
+        }
+
+        // Collect treasure
+        function collectTreasure() {
+            if (!currentTreasure) return;
+
+            currentTreasure.collected = true;
+            
+            const statusDiv = document.getElementById('treasureStatus');
+            const collectBtn = document.getElementById('collectButton');
+            
+            statusDiv.innerHTML = `🎉 ${currentTreasure.name} collected!`;
+            collectBtn.classList.add('hidden');
+            collectBtn.classList.add('treasure-found');
+            
+            // Hide treasure in AR
+            hideTreasureInAR();
+            
+            // Show celebration
+            setTimeout(() => {
+                alert(`🎊 Congratulations! You found the ${currentTreasure.name}!`);
+            }, 500);
+        }
+
+        // Handle location errors
+        function handleLocationError(error) {
+            let message = 'Unknown location error';
+            
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message = 'Location access denied. Please allow location access to play.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message = 'Location information unavailable.';
+                    break;
+                case error.TIMEOUT:
+                    message = 'Location request timed out.';
+                    break;
+            }
+            
+            alert(message);
+        }
+
+        // Hide permission modal
+        function hidePermissionModal() {
+            document.getElementById('permissionModal').classList.add('hidden');
+        }
+
+        // Update loading text
+        function updateLoadingText(text) {
+            document.getElementById('loadingText').textContent = text;
+        }
+
+        // Force location update function
+        function forceLocationUpdate() {
+            console.log('🔄 Force updating location...');
+            
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by this browser.');
+                return;
+            }
+
+            const options = {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            };
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    console.log('✅ Force location update successful:', position);
+                    userLocation = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    };
+                    updateLocationStatus();
+                    checkForTreasures();
+                },
+                function(error) {
+                    console.error('❌ Force location update failed:', error);
+                    alert('Failed to get location: ' + error.message);
+                },
+                options
+            );
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+        });
+    </script>
+</body>
+</html>
