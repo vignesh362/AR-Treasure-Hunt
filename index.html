@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR Treasure Chest - WebAR Demo</title>
+    
+    <!-- A-Frame and AR.js CDN -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.0/aframe/build/aframe-ar.min.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+        }
+
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: white;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .loading-progress {
+            width: 300px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .loading-bar {
+            height: 100%;
+            background: white;
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 2px;
+        }
+
+        /* Info Overlay */
+        .info-overlay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .info-overlay h2 {
+            margin: 0 0 10px 0;
+            color: #FFD700;
+        }
+
+        .info-overlay p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .marker-link {
+            color: #FFD700;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .marker-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Server Instructions */
+        .server-instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .server-instructions a {
+            color: #FFD700;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        /* Hide elements when AR is ready */
+        .ar-ready .loading-screen {
+            display: none;
+        }
+
+        .ar-ready .server-instructions {
+            display: none;
+        }
+
+        /* Camera Permission Button */
+        .camera-permission {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 1001;
+            display: none;
+        }
+
+        .camera-permission button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+
+        .camera-permission button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loadingText">Loading AR.js...</div>
+        <div class="loading-progress">
+            <div class="loading-bar" id="loadingBar"></div>
+        </div>
+    </div>
+
+    <!-- Info Overlay -->
+    <div class="info-overlay">
+        <h2>🏴‍☠️ AR Treasure Chest</h2>
+        <p>Point your camera at the Hiro marker to see the treasure chest!</p>
+        <p>Download printable Hiro marker: <a href="https://jeromeetienne.github.io/AR.js/data/images/HIRO.jpg" class="marker-link" target="_blank">Click here</a></p>
+        <div id="marker-tips" style="margin-top: 10px; font-size: 12px; color: #FFD700;">
+            <p><strong>💡 Marker Tips:</strong></p>
+            <p>• Print marker on white paper</p>
+            <p>• Ensure good lighting</p>
+            <p>• Hold marker flat and steady</p>
+            <p>• Keep marker in center of camera view</p>
+        </div>
+    </div>
+
+    <!-- Camera Permission Modal -->
+    <div class="camera-permission" id="cameraPermission">
+        <h3>📷 Camera Access Required</h3>
+        <p>This AR app needs access to your camera to work properly.</p>
+        <button onclick="requestCameraPermission()">Allow Camera Access</button>
+    </div>
+
+    <!-- Server Instructions -->
+    <div class="server-instructions">
+        <strong>⚠️ Important:</strong> This WebAR app requires a local server to work properly due to browser security policies. 
+        <br>Run: <code>python -m http.server 8000</code> or <code>npx serve .</code> then visit <a href="http://localhost:8000">http://localhost:8000</a>
+    </div>
+
+    <!-- A-Frame Scene -->
+    <a-scene 
+        vr-mode-ui="enabled: false" 
+        renderer="logarithmicDepthBuffer: true;" 
+        embedded 
+        arjs="sourceType: webcam; debugUIEnabled: true;"
+        id="arScene">
+        
+        <!-- Camera at scene level for webcam access -->
+        <a-entity camera></a-entity>
+        
+        <!-- AR Marker -->
+        <a-marker preset="hiro" id="hiro-marker">
+            
+            <!-- Treasure Chest Model -->
+            <a-box 
+                position="0 0.5 0" 
+                rotation="0 45 0" 
+                scale="0.5 0.5 0.5"
+                material="color: #FFD700; metalness: 0.8; roughness: 0.2;"
+                animation="property: rotation; to: 0 405 0; loop: true; dur: 10000">
+            </a-box>
+            
+            <!-- Chest Lid -->
+            <a-box 
+                position="0 0.75 0" 
+                rotation="0 45 0" 
+                scale="0.5 0.1 0.5"
+                material="color: #B8860B; metalness: 0.8; roughness: 0.2;">
+            </a-box>
+            
+            <!-- Chest Lock -->
+            <a-cylinder 
+                position="0 0.7 0.2" 
+                rotation="90 0 0" 
+                radius="0.05" 
+                height="0.1"
+                material="color: #8B4513; metalness: 0.9; roughness: 0.1;">
+            </a-cylinder>
+            
+            <!-- Sparkle Effects -->
+            <a-sphere 
+                position="0.3 0.8 0.3" 
+                radius="0.02" 
+                material="color: #FFD700; emissive: #FFD700; emissiveIntensity: 0.5"
+                animation="property: scale; to: 1.5 1.5 1.5; loop: true; dur: 2000; dir: alternate">
+            </a-sphere>
+            
+            <a-sphere 
+                position="-0.2 0.9 0.1" 
+                radius="0.015" 
+                material="color: #FFD700; emissive: #FFD700; emissiveIntensity: 0.3"
+                animation="property: scale; to: 2 2 2; loop: true; dur: 1500; dir: alternate; delay: 500">
+            </a-sphere>
+            
+            <a-sphere 
+                position="0.1 0.7 -0.2" 
+                radius="0.02" 
+                material="color: #FFD700; emissive: #FFD700; emissiveIntensity: 0.4"
+                animation="property: scale; to: 1.8 1.8 1.8; loop: true; dur: 1800; dir: alternate; delay: 1000">
+            </a-sphere>
+        </a-marker>
+
+        <!-- Lighting -->
+        <a-light type="ambient" color="#404040"></a-light>
+        <a-light type="directional" position="0 1 0" color="#ffffff" intensity="0.5"></a-light>
+    </a-scene>
+
+    <script>
+        // Loading progress simulation
+        let progress = 0;
+        const loadingText = document.getElementById('loadingText');
+        const loadingBar = document.getElementById('loadingBar');
+        const loadingScreen = document.getElementById('loadingScreen');
+        const body = document.body;
+
+        const loadingSteps = [
+            { text: "Loading AR.js...", progress: 20 },
+            { text: "Initializing A-Frame...", progress: 40 },
+            { text: "Setting up camera...", progress: 60 },
+            { text: "Loading 3D models...", progress: 80 },
+            { text: "Initializing AR system...", progress: 90 },
+            { text: "Ready for AR!", progress: 100 }
+        ];
+
+        let currentStep = 0;
+
+        function updateLoading() {
+            if (currentStep < loadingSteps.length) {
+                const step = loadingSteps[currentStep];
+                loadingText.textContent = step.text;
+                loadingBar.style.width = step.progress + '%';
+                currentStep++;
+                
+                setTimeout(updateLoading, 800);
+            } else {
+                // Hide loading screen after a short delay
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }, 1000);
+            }
+        }
+
+        // Start loading animation
+        setTimeout(updateLoading, 500);
+
+        // Camera permission function
+        function requestCameraPermission() {
+            const permissionModal = document.getElementById('cameraPermission');
+            console.log('🔍 Requesting camera permission...');
+            updateLoadingText('Requesting camera access...');
+            
+            // Check if getUserMedia is available
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Your browser does not support camera access. Please use a modern browser like Chrome, Firefox, or Safari.');
+                return;
+            }
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment', // Use back camera on mobile
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            })
+                .then(function(stream) {
+                    console.log('✅ Camera access granted!');
+                    updateLoadingText('Camera access granted! Initializing AR...');
+                    
+                    // Let AR.js take over the camera stream
+                    console.log('🔄 Stopping manual stream to let AR.js handle camera...');
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    permissionModal.style.display = 'none';
+                    
+                    // Give AR.js time to initialize
+                    setTimeout(() => {
+                        console.log('🔄 Checking if AR.js has taken over camera...');
+                        const video = document.querySelector('video');
+                        if (video) {
+                            console.log('✅ AR.js video element found!');
+                            updateLoadingText('AR system ready! Point at Hiro marker');
+                        } else {
+                            console.log('⏳ AR.js still initializing camera...');
+                            updateLoadingText('AR.js initializing camera...');
+                        }
+                    }, 2000);
+                })
+                .catch(function(error) {
+                    console.error('❌ Camera access denied:', error);
+                    updateLoadingText('Camera access denied. Please allow camera access.');
+                    alert('Camera access is required for AR to work. Please:\n\n1. Click "Allow" when prompted\n2. Or check your browser settings\n3. Make sure no other app is using the camera\n4. Try refreshing the page');
+                });
+        }
+
+        // Auto-show permission modal after loading
+        setTimeout(function() {
+            const permissionModal = document.getElementById('cameraPermission');
+            console.log('Checking camera permission status...');
+            
+            // Always show the modal to ensure camera access
+            console.log('Showing camera permission modal');
+            permissionModal.style.display = 'block';
+            updateLoadingText('Camera permission required...');
+        }, 3000);
+
+        // Global error handler
+        window.addEventListener('error', function(e) {
+            console.error('Global error:', e.error);
+            updateLoadingText('Error: ' + e.message);
+        });
+
+        // Wait for AR.js to be fully loaded
+        function waitForARJS() {
+            return new Promise((resolve) => {
+                if (window.ARjs && window.ARjs.ArToolkitSource) {
+                    console.log('✅ AR.js already loaded');
+                    resolve();
+                } else {
+                    console.log('⏳ Waiting for AR.js to load...');
+                    const checkInterval = setInterval(() => {
+                        if (window.ARjs && window.ARjs.ArToolkitSource) {
+                            console.log('✅ AR.js loaded successfully');
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                    
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        console.log('⚠️ AR.js loading timeout');
+                        resolve();
+                    }, 10000);
+                }
+            });
+        }
+
+        // AR.js event listeners and camera setup
+        document.addEventListener('DOMContentLoaded', async function() {
+            const scene = document.getElementById('arScene');
+            const permissionModal = document.getElementById('cameraPermission');
+            
+            console.log('DOM loaded, setting up AR.js...');
+            console.log('Scene element:', scene);
+            
+            // Wait for AR.js to be ready
+            await waitForARJS();
+
+            // Enhanced AR.js event listeners
+            scene.addEventListener('arjs-video-loaded', function() {
+                console.log('✅ AR.js video loaded successfully');
+                updateLoadingText('Camera ready! Point at Hiro marker');
+                
+                // Check video element
+                const video = document.querySelector('video');
+                if (video) {
+                    console.log('✅ Video element found:', video);
+                    console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                    console.log('Video readyState:', video.readyState);
+                }
+                
+                // Hide loading screen when video is actually loaded
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }, 1000);
+            });
+
+            scene.addEventListener('arjs-initialized', function() {
+                console.log('✅ AR.js initialized successfully');
+                updateLoadingText('AR system ready!');
+            });
+
+            scene.addEventListener('loaded', function() {
+                console.log('✅ A-Frame scene loaded');
+                updateLoadingText('Scene loaded!');
+            });
+
+            // Add more AR.js event listeners for debugging
+            scene.addEventListener('arjs-camera-init', function() {
+                console.log('✅ AR.js camera initialization started');
+                updateLoadingText('Initializing camera...');
+            });
+
+            scene.addEventListener('arjs-camera-ready', function() {
+                console.log('✅ AR.js camera ready');
+                updateLoadingText('Camera ready!');
+            });
+
+            // Listen for any AR.js errors
+            scene.addEventListener('arjs-error', function(event) {
+                console.error('❌ AR.js error:', event.detail);
+                updateLoadingText('AR.js error: ' + event.detail);
+            });
+
+            // Listen for marker found
+            const marker = document.getElementById('hiro-marker');
+            marker.addEventListener('markerFound', function(event) {
+                console.log('🎯 Hiro marker detected!');
+                updateLoadingText('🎯 Marker detected! AR is working!');
+                
+                // Add visual feedback
+                const markerInfo = document.createElement('div');
+                markerInfo.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(0, 255, 0, 0.8);
+                    color: white;
+                    padding: 10px;
+                    border-radius: 5px;
+                    z-index: 1000;
+                    font-weight: bold;
+                `;
+                markerInfo.textContent = '🎯 MARKER DETECTED!';
+                document.body.appendChild(markerInfo);
+                
+                // Hide loading screen when marker is found
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }, 1000);
+            });
+
+            // Listen for marker lost
+            marker.addEventListener('markerLost', function(event) {
+                console.log('❌ Hiro marker lost');
+                updateLoadingText('Point camera at Hiro marker...');
+                
+                // Remove marker detection feedback
+                const existingInfo = document.querySelector('[style*="MARKER DETECTED"]');
+                if (existingInfo) {
+                    existingInfo.remove();
+                }
+            });
+
+            // Check if running on file:// protocol
+            if (window.location.protocol === 'file:') {
+                console.warn('Running on file:// protocol - AR.js may not work properly');
+                alert('This app must be run from a local server, not directly from file://. Please use a local server.');
+            }
+
+            // Enhanced camera check with debugging and fallback
+            setTimeout(function() {
+                const video = document.querySelector('video');
+                console.log('🔍 Checking camera status...');
+                console.log('Video element found:', !!video);
+                
+                if (video) {
+                    console.log('✅ Video element found');
+                    console.log('Video readyState:', video.readyState);
+                    console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                    console.log('Video src:', video.src);
+                    
+                    if (video.readyState >= 2) {
+                        console.log('✅ Camera is working properly');
+                        updateLoadingText('Camera ready! Point at Hiro marker');
+                        
+                        // Simple marker detection status (matching working test)
+                        console.log('✅ Camera ready - marker detection should work now!');
+                        
+                    } else {
+                        console.log('⏳ Camera still initializing...');
+                        updateLoadingText('Camera initializing...');
+                    }
+                } else {
+                    console.log('❌ No video element found - AR.js may have failed to initialize camera');
+                    updateLoadingText('Camera not detected. Trying to reinitialize...');
+                    
+                    // Try to manually trigger AR.js camera initialization
+                    console.log('🔄 Attempting to reinitialize AR.js camera...');
+                    try {
+                        // Check for AR.js systems
+                        console.log('Available systems:', Object.keys(scene.systems));
+                        
+                        // Try different AR.js system names
+                        const arjsSystem = scene.systems['arjs'] || scene.systems['arjs-system'] || scene.systems['arjs-video'];
+                        if (arjsSystem) {
+                            console.log('🔄 Found AR.js system, attempting reinit...');
+                            if (typeof arjsSystem.init === 'function') {
+                                arjsSystem.init();
+                            } else if (typeof arjsSystem.start === 'function') {
+                                arjsSystem.start();
+                            }
+                        } else {
+                            console.log('❌ AR.js system not found');
+                            console.log('Available systems:', Object.keys(scene.systems));
+                            
+                            // Try to manually create video element
+                            console.log('🔄 Attempting to manually create video element...');
+                            const video = document.createElement('video');
+                            video.setAttribute('autoplay', '');
+                            video.setAttribute('muted', '');
+                            video.setAttribute('playsinline', '');
+                            video.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;';
+                            document.body.appendChild(video);
+                            
+                            // Try to get camera stream
+                            navigator.mediaDevices.getUserMedia({ video: true })
+                                .then(stream => {
+                                    video.srcObject = stream;
+                                    console.log('✅ Manual video element created and stream attached');
+                                    
+                                    // Since AR.js failed, create a simple marker detection simulation
+                                    console.log('🔄 Creating fallback AR experience...');
+                                    createFallbackAR();
+                                })
+                                .catch(err => console.error('❌ Manual video creation failed:', err));
+                        }
+                    } catch (error) {
+                        console.error('❌ Error reinitializing AR.js:', error);
+                    }
+                }
+            }, 5000);
+
+            // Additional check after 10 seconds
+            setTimeout(function() {
+                const video = document.querySelector('video');
+                if (!video) {
+                    console.log('❌ Still no video element after 10 seconds');
+                    updateLoadingText('Camera initialization failed. Please refresh the page.');
+                    
+                    // Show a retry button
+                    const retryButton = document.createElement('button');
+                    retryButton.textContent = 'Retry Camera';
+                    retryButton.style.cssText = `
+                        position: fixed;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        background: #4CAF50;
+                        color: white;
+                        border: none;
+                        padding: 15px 30px;
+                        border-radius: 8px;
+                        font-size: 16px;
+                        cursor: pointer;
+                        z-index: 1002;
+                    `;
+                    retryButton.onclick = function() {
+                        document.body.removeChild(retryButton);
+                        window.location.reload();
+                    };
+                    document.body.appendChild(retryButton);
+                }
+            }, 10000);
+
+            // Force hide loading screen after 15 seconds
+            setTimeout(function() {
+                if (!body.classList.contains('ar-ready')) {
+                    console.log('Force hiding loading screen after timeout');
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }
+            }, 15000);
+        });
+
+        function updateLoadingText(text) {
+            const loadingText = document.getElementById('loadingText');
+            if (loadingText) {
+                loadingText.textContent = text;
+            }
+        }
+
+        // Fallback AR experience when AR.js fails
+        function createFallbackAR() {
+            console.log('🎮 Creating fallback AR experience...');
+            
+            // Hide the A-Frame scene since AR.js isn't working
+            const scene = document.getElementById('arScene');
+            scene.style.display = 'none';
+            
+            // Create a simple 3D treasure chest using CSS 3D transforms
+            const treasureChest = document.createElement('div');
+            treasureChest.innerHTML = `
+                <div class="chest-container">
+                    <div class="chest-body"></div>
+                    <div class="chest-lid"></div>
+                    <div class="chest-lock"></div>
+                    <div class="sparkle sparkle-1"></div>
+                    <div class="sparkle sparkle-2"></div>
+                    <div class="sparkle sparkle-3"></div>
+                </div>
+            `;
+            
+            // Add CSS for the treasure chest
+            const style = document.createElement('style');
+            style.textContent = `
+                .chest-container {
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    width: 200px;
+                    height: 150px;
+                    transform-style: preserve-3d;
+                    animation: rotate 10s linear infinite;
+                    z-index: 10;
+                }
+                
+                .chest-body {
+                    width: 200px;
+                    height: 100px;
+                    background: linear-gradient(45deg, #FFD700, #B8860B);
+                    border: 3px solid #8B4513;
+                    border-radius: 10px;
+                    position: relative;
+                    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+                }
+                
+                .chest-lid {
+                    width: 200px;
+                    height: 20px;
+                    background: linear-gradient(45deg, #B8860B, #8B4513);
+                    border: 3px solid #8B4513;
+                    border-radius: 10px 10px 0 0;
+                    position: absolute;
+                    top: -20px;
+                    left: 0;
+                }
+                
+                .chest-lock {
+                    width: 20px;
+                    height: 20px;
+                    background: #8B4513;
+                    border-radius: 50%;
+                    position: absolute;
+                    top: -10px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    border: 2px solid #654321;
+                }
+                
+                .sparkle {
+                    position: absolute;
+                    width: 8px;
+                    height: 8px;
+                    background: #FFD700;
+                    border-radius: 50%;
+                    animation: sparkle 2s ease-in-out infinite;
+                }
+                
+                .sparkle-1 {
+                    top: -30px;
+                    left: 30px;
+                    animation-delay: 0s;
+                }
+                
+                .sparkle-2 {
+                    top: -40px;
+                    right: 40px;
+                    animation-delay: 0.5s;
+                }
+                
+                .sparkle-3 {
+                    top: -20px;
+                    left: 50%;
+                    animation-delay: 1s;
+                }
+                
+                @keyframes rotate {
+                    from { transform: translate(-50%, -50%) rotateY(0deg); }
+                    to { transform: translate(-50%, -50%) rotateY(360deg); }
+                }
+                
+                @keyframes sparkle {
+                    0%, 100% { opacity: 0.3; transform: scale(1); }
+                    50% { opacity: 1; transform: scale(1.5); }
+                }
+                
+                .fallback-instructions {
+                    position: fixed;
+                    bottom: 20px;
+                    left: 20px;
+                    right: 20px;
+                    background: rgba(0, 0, 0, 0.8);
+                    color: white;
+                    padding: 15px;
+                    border-radius: 10px;
+                    text-align: center;
+                    z-index: 100;
+                }
+            `;
+            document.head.appendChild(style);
+            document.body.appendChild(treasureChest);
+            
+            // Add instructions
+            const instructions = document.createElement('div');
+            instructions.className = 'fallback-instructions';
+            instructions.innerHTML = `
+                <h3>🎮 Fallback AR Mode</h3>
+                <p>AR.js failed to load, but your camera is working!</p>
+                <p>This is a simplified AR experience. The treasure chest is visible on screen.</p>
+                <p>Click anywhere to make the chest bounce! Try refreshing to attempt AR.js loading.</p>
+            `;
+            document.body.appendChild(instructions);
+            
+            // Add click interaction to the treasure chest
+            treasureChest.addEventListener('click', function() {
+                const container = treasureChest.querySelector('.chest-container');
+                container.style.animation = 'none';
+                container.style.transform = 'translate(-50%, -50%) scale(1.2)';
+                setTimeout(() => {
+                    container.style.transform = 'translate(-50%, -50%) scale(1)';
+                    container.style.animation = 'rotate 10s linear infinite';
+                }, 200);
+            });
+            
+            // Add some floating particles
+            for (let i = 0; i < 10; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'floating-particle';
+                particle.style.cssText = `
+                    position: fixed;
+                    width: 4px;
+                    height: 4px;
+                    background: #FFD700;
+                    border-radius: 50%;
+                    pointer-events: none;
+                    z-index: 5;
+                    left: ${Math.random() * 100}%;
+                    top: ${Math.random() * 100}%;
+                    animation: float ${3 + Math.random() * 4}s ease-in-out infinite;
+                    animation-delay: ${Math.random() * 2}s;
+                `;
+                document.body.appendChild(particle);
+            }
+            
+            // Add floating animation CSS
+            const floatStyle = document.createElement('style');
+            floatStyle.textContent = `
+                @keyframes float {
+                    0%, 100% { 
+                        transform: translateY(0px) rotate(0deg);
+                        opacity: 0.3;
+                    }
+                    50% { 
+                        transform: translateY(-20px) rotate(180deg);
+                        opacity: 1;
+                    }
+                }
+            `;
+            document.head.appendChild(floatStyle);
+            
+            // Hide loading screen
+            const loadingScreen = document.getElementById('loadingScreen');
+            loadingScreen.style.display = 'none';
+            document.body.classList.add('ar-ready');
+            
+            console.log('✅ Fallback AR experience created successfully!');
+            updateLoadingText('Fallback AR mode active!');
+        }
+
+        // Add some interactive effects
+        document.addEventListener('click', function() {
+            // Add click effect to treasure chest
+            const chest = document.querySelector('a-box');
+            if (chest) {
+                chest.setAttribute('animation__click', 'property: scale; to: 0.6 0.6 0.6; dur: 200; dir: alternate');
+                setTimeout(() => {
+                    chest.removeAttribute('animation__click');
+                }, 400);
+            }
+        });
+    </script>
+</body>
+</html>

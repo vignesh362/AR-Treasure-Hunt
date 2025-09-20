@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hiro Marker Test</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.0/aframe/build/aframe-ar.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        .status { 
+            position: fixed; 
+            top: 10px; 
+            left: 10px; 
+            right: 10px;
+            background: rgba(0,0,0,0.9); 
+            color: white; 
+            padding: 15px; 
+            border-radius: 5px; 
+            z-index: 1000;
+            text-align: center;
+        }
+        .detected { background: rgba(0,128,0,0.9); }
+        .not-detected { background: rgba(128,0,0,0.9); }
+        .instructions {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 1000;
+            text-align: center;
+        }
+        .marker-link {
+            color: #FFD700;
+            text-decoration: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="status not-detected" id="status">
+        <h3>🎯 Hiro Marker Detection Test</h3>
+        <p id="message">Point camera at Hiro marker...</p>
+        <p id="details">Waiting for marker detection...</p>
+    </div>
+
+    <div class="instructions">
+        <h4>📋 Instructions:</h4>
+        <p>1. Download Hiro marker: <a href="https://jeromeetienne.github.io/AR.js/data/images/HIRO.jpg" class="marker-link" target="_blank">Click here</a></p>
+        <p>2. Print it on white paper</p>
+        <p>3. Point camera at the marker</p>
+        <p>4. Ensure good lighting and flat surface</p>
+    </div>
+
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: true;">
+        <a-marker preset="hiro" id="test-marker">
+            <a-box position="0 0.5 0" material="color: red;" scale="0.5 0.5 0.5"></a-box>
+            <a-text value="HIRO DETECTED!" position="0 1 0" align="center" color="white"></a-text>
+        </a-marker>
+        <a-entity camera></a-entity>
+    </a-scene>
+
+    <script>
+        const status = document.getElementById('status');
+        const message = document.getElementById('message');
+        const details = document.getElementById('details');
+        
+        let detectionCount = 0;
+        let lastDetection = 0;
+        
+        function updateStatus(detected, info = '') {
+            if (detected) {
+                status.className = 'status detected';
+                message.textContent = '✅ MARKER DETECTED!';
+                details.textContent = `Detection #${++detectionCount} - ${info}`;
+                lastDetection = Date.now();
+            } else {
+                status.className = 'status not-detected';
+                message.textContent = '❌ No marker detected';
+                const timeSinceLastDetection = Date.now() - lastDetection;
+                if (lastDetection > 0) {
+                    details.textContent = `Last detected: ${Math.floor(timeSinceLastDetection/1000)}s ago`;
+                } else {
+                    details.textContent = 'Point camera at Hiro marker...';
+                }
+            }
+        }
+        
+        // Listen for marker events
+        const marker = document.getElementById('test-marker');
+        
+        marker.addEventListener('markerFound', function() {
+            console.log('🎯 Marker found!');
+            updateStatus(true, 'AR.js detected the marker');
+        });
+        
+        marker.addEventListener('markerLost', function() {
+            console.log('❌ Marker lost');
+            updateStatus(false);
+        });
+        
+        // Check marker visibility periodically
+        setInterval(() => {
+            if (marker && marker.object3D) {
+                const isVisible = marker.object3D.visible;
+                if (isVisible) {
+                    updateStatus(true, 'Object3D visible');
+                } else {
+                    updateStatus(false);
+                }
+            }
+        }, 500);
+        
+        // Add some debugging info
+        setTimeout(() => {
+            const scene = document.querySelector('a-scene');
+            const video = document.querySelector('video');
+            
+            console.log('Scene systems:', Object.keys(scene.systems));
+            console.log('Video element:', video);
+            console.log('Marker element:', marker);
+            
+            if (video) {
+                console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                console.log('Video readyState:', video.readyState);
+            }
+        }, 3000);
+    </script>
+</body>
+</html>

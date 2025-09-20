@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR.js CDN Test</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.0/aframe/build/aframe-ar.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        .status { 
+            position: fixed; 
+            top: 10px; 
+            left: 10px; 
+            background: rgba(0,0,0,0.8); 
+            color: white; 
+            padding: 15px; 
+            border-radius: 5px; 
+            z-index: 1000;
+            max-width: 300px;
+        }
+        .success { background: rgba(0,128,0,0.8); }
+        .error { background: rgba(128,0,0,0.8); }
+        .warning { background: rgba(128,128,0,0.8); }
+    </style>
+</head>
+<body>
+    <div class="status" id="status">
+        <h3>AR.js CDN Test</h3>
+        <p id="message">Testing AR.js loading...</p>
+    </div>
+
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: true;">
+        <a-marker preset="hiro">
+            <a-box position="0 0.5 0" material="color: red;"></a-box>
+        </a-marker>
+        <a-entity camera></a-entity>
+    </a-scene>
+
+    <script>
+        const status = document.getElementById('status');
+        const message = document.getElementById('message');
+        
+        function updateStatus(msg, type = 'info') {
+            message.textContent = msg;
+            status.className = `status ${type}`;
+            console.log(msg);
+        }
+        
+        // Test 1: Check if AR.js loaded
+        setTimeout(() => {
+            if (window.ARjs) {
+                updateStatus('✅ AR.js loaded successfully!', 'success');
+                console.log('AR.js version:', window.ARjs);
+            } else {
+                updateStatus('❌ AR.js failed to load', 'error');
+            }
+        }, 2000);
+        
+        // Test 2: Check for video element
+        setTimeout(() => {
+            const video = document.querySelector('video');
+            if (video) {
+                updateStatus('✅ Video element created!', 'success');
+                console.log('Video element:', video);
+            } else {
+                updateStatus('⚠️ No video element found', 'warning');
+            }
+        }, 5000);
+        
+        // Test 3: Check scene systems
+        setTimeout(() => {
+            const scene = document.querySelector('a-scene');
+            if (scene && scene.systems) {
+                const systems = Object.keys(scene.systems);
+                console.log('Available systems:', systems);
+                
+                if (systems.some(s => s.includes('ar'))) {
+                    updateStatus('✅ AR.js systems found!', 'success');
+                } else {
+                    updateStatus('⚠️ No AR.js systems found', 'warning');
+                }
+            }
+        }, 7000);
+        
+        // Test 4: Final status
+        setTimeout(() => {
+            const video = document.querySelector('video');
+            const hasARjs = window.ARjs;
+            
+            if (hasARjs && video) {
+                updateStatus('🎉 AR.js working perfectly!', 'success');
+            } else if (hasARjs && !video) {
+                updateStatus('⚠️ AR.js loaded but no video', 'warning');
+            } else if (!hasARjs && video) {
+                updateStatus('⚠️ Video works but no AR.js', 'warning');
+            } else {
+                updateStatus('❌ Both AR.js and video failed', 'error');
+            }
+        }, 10000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple AR Test</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/aframevr/ar.js@1.7.0/aframe/build/aframe-ar.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        .info { 
+            position: fixed; 
+            top: 10px; 
+            left: 10px; 
+            background: rgba(0,0,0,0.8); 
+            color: white; 
+            padding: 10px; 
+            border-radius: 5px; 
+            z-index: 1000;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>Simple AR Test</h3>
+        <p>Point camera at Hiro marker</p>
+        <p id="status">Loading...</p>
+    </div>
+
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: true;">
+        <a-marker preset="hiro">
+            <a-box position="0 0.5 0" material="color: red;"></a-box>
+        </a-marker>
+        <a-entity camera></a-entity>
+    </a-scene>
+
+    <script>
+        const status = document.getElementById('status');
+        
+        // Check if AR.js loaded
+        setTimeout(() => {
+            if (window.ARjs) {
+                status.textContent = 'AR.js loaded ✅';
+                console.log('AR.js loaded:', window.ARjs);
+            } else {
+                status.textContent = 'AR.js failed to load ❌';
+                console.error('AR.js not found');
+            }
+        }, 2000);
+
+        // Check for video element
+        setTimeout(() => {
+            const video = document.querySelector('video');
+            if (video) {
+                status.textContent += ' | Video found ✅';
+                console.log('Video element:', video);
+            } else {
+                status.textContent += ' | No video ❌';
+                console.log('No video element found');
+            }
+        }, 5000);
+
+        // Check scene systems
+        setTimeout(() => {
+            const scene = document.querySelector('a-scene');
+            if (scene && scene.systems) {
+                console.log('Available systems:', Object.keys(scene.systems));
+                status.textContent += ' | Systems: ' + Object.keys(scene.systems).join(', ');
+            }
+        }, 7000);
+    </script>
+</body>
+</html>
