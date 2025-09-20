@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ground AR - Treasure Chest</title>
+    
+    <!-- A-Frame and AR.js CDN -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.0/aframe/build/aframe-ar.min.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            overflow: hidden;
+        }
+
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: white;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid #f39c12;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 18px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        /* Info Overlay */
+        .info-overlay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .info-overlay h2 {
+            margin: 0 0 10px 0;
+            color: #f39c12;
+        }
+
+        .info-overlay p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        /* Instructions Panel */
+        .instructions-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .instructions-panel h3 {
+            margin: 0 0 10px 0;
+            color: #f39c12;
+        }
+
+        .instruction-step {
+            margin: 8px 0;
+            padding: 8px;
+            background: rgba(243, 156, 18, 0.2);
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .instruction-step.active {
+            background: rgba(39, 174, 96, 0.3);
+            color: #2ecc71;
+            font-weight: bold;
+        }
+
+        /* Hide elements when AR is ready */
+        .ar-ready .loading-screen {
+            display: none;
+        }
+
+        /* Camera Permission Button */
+        .camera-permission {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 1001;
+            display: none;
+        }
+
+        .camera-permission button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+
+        .camera-permission button:hover {
+            background: #45a049;
+        }
+
+        /* Ground indicator */
+        .ground-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            border: 3px solid #f39c12;
+            border-radius: 50%;
+            background: rgba(243, 156, 18, 0.2);
+            z-index: 50;
+            display: none;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loadingText">Loading Ground AR...</div>
+    </div>
+
+    <!-- Info Overlay -->
+    <div class="info-overlay">
+        <h2>🏴‍☠️ Ground AR Treasure Chest</h2>
+        <p>No markers needed! The treasure chest will appear on the ground in front of you.</p>
+        <p>Point your camera at the ground and tap to place the treasure!</p>
+    </div>
+
+    <!-- Instructions Panel -->
+    <div class="instructions-panel" id="instructionsPanel">
+        <h3>📱 How to Use</h3>
+        <div class="instruction-step" id="step1">1. Allow camera access</div>
+        <div class="instruction-step" id="step2">2. Point camera at ground</div>
+        <div class="instruction-step" id="step3">3. Tap screen to place treasure</div>
+        <div class="instruction-step" id="step4">4. Move around to explore</div>
+    </div>
+
+    <!-- Ground Indicator -->
+    <div class="ground-indicator" id="groundIndicator"></div>
+
+    <!-- Camera Permission Modal -->
+    <div class="camera-permission" id="cameraPermission">
+        <h3>📷 Camera Access Required</h3>
+        <p>This Ground AR app needs access to your camera to place treasures on the ground.</p>
+        <button onclick="requestCameraPermission()">Allow Camera Access</button>
+    </div>
+
+    <!-- A-Frame Scene -->
+    <a-scene 
+        vr-mode-ui="enabled: false" 
+        renderer="logarithmicDepthBuffer: true;" 
+        embedded 
+        arjs="sourceType: webcam; debugUIEnabled: false; trackingMethod: best;"
+        id="arScene">
+        
+        <!-- Camera -->
+        <a-entity camera></a-entity>
+        
+        <!-- Ground Plane for AR placement -->
+        <a-plane 
+            id="groundPlane"
+            position="0 0 0" 
+            rotation="-90 0 0" 
+            width="100" 
+            height="100" 
+            color="#7BC8A4" 
+            opacity="0.3"
+            visible="false">
+        </a-plane>
+
+        <!-- Treasure Chest (positioned on ground) -->
+        <a-entity 
+            id="treasureChest"
+            gltf-model="url(./asserts/treasure_chest.glb)"
+            scale="0.4 0.4 0.4"
+            position="0 0 0"
+            rotation="0 0 0"
+            visible="false"
+            animation__rotate="property: rotation; to: 0 360 0; loop: true; dur: 15000"
+            animation__bounce="property: position; to: 0 0.05 0; dir: alternate; loop: true; dur: 2000">
+            
+            <!-- Fallback treasure chest if GLB fails to load -->
+            <a-entity id="fallbackTreasure" visible="false">
+                <!-- Chest Body -->
+                <a-box 
+                    position="0 0 0" 
+                    rotation="0 45 0" 
+                    scale="0.4 0.4 0.4"
+                    material="color: #8B4513; metalness: 0.3; roughness: 0.7"
+                    animation__rotate="property: rotation; to: 0 405 0; loop: true; dur: 15000">
+                </a-box>
+                
+                <!-- Chest Lid -->
+                <a-box 
+                    position="0 0.2 0" 
+                    rotation="0 45 0" 
+                    scale="0.4 0.08 0.4"
+                    material="color: #B8860B; metalness: 0.8; roughness: 0.2;">
+                </a-box>
+                
+                <!-- Chest Lock -->
+                <a-cylinder 
+                    position="0 0.18 0.16" 
+                    rotation="90 0 0" 
+                    radius="0.04" 
+                    height="0.08"
+                    material="color: #8B4513; metalness: 0.9; roughness: 0.1;">
+                </a-cylinder>
+                
+                <!-- Sparkle Effects -->
+                <a-sphere 
+                    position="0.24 0.32 0.24" 
+                    radius="0.016" 
+                    material="color: #f39c12; emissive: #f39c12; emissiveIntensity: 0.5"
+                    animation="property: scale; to: 1.5 1.5 1.5; loop: true; dur: 2000; dir: alternate">
+                </a-sphere>
+                
+                <a-sphere 
+                    position="-0.16 0.36 0.08" 
+                    radius="0.012" 
+                    material="color: #f39c12; emissive: #f39c12; emissiveIntensity: 0.3"
+                    animation="property: scale; to: 2 2 2; loop: true; dur: 1500; dir: alternate; delay: 500">
+                </a-sphere>
+                
+                <a-sphere 
+                    position="0.08 0.28 -0.16" 
+                    radius="0.016" 
+                    material="color: #f39c12; emissive: #f39c12; emissiveIntensity: 0.4"
+                    animation="property: scale; to: 1.8 1.8 1.8; loop: true; dur: 1800; dir: alternate; delay: 1000">
+                </a-sphere>
+            </a-entity>
+        </a-entity>
+
+        <!-- Treasure glow effect -->
+        <a-entity id="treasureGlow" 
+                  geometry="primitive: sphere; radius: 1.5"
+                  material="color: #f39c12; transparent: true; opacity: 0.2"
+                  position="0 0 0"
+                  visible="false"
+                  animation__pulse="property: scale; to: 1.3 1.3 1.3; dir: alternate; loop: true; dur: 2000">
+        </a-entity>
+
+        <!-- Lighting -->
+        <a-light type="ambient" color="#404040"></a-light>
+        <a-light type="directional" position="0 1 0" color="#ffffff" intensity="0.8"></a-light>
+        <a-light type="point" position="0 2 0" color="#f39c12" intensity="0.5"></a-light>
+    </a-scene>
+
+    <script>
+        // Global variables
+        let isARReady = false;
+        let treasurePlaced = false;
+        let currentStep = 1;
+
+        // Loading progress simulation
+        let progress = 0;
+        const loadingText = document.getElementById('loadingText');
+        const loadingScreen = document.getElementById('loadingScreen');
+        const body = document.body;
+
+        const loadingSteps = [
+            { text: "Loading AR.js...", progress: 20 },
+            { text: "Initializing A-Frame...", progress: 40 },
+            { text: "Setting up camera...", progress: 60 },
+            { text: "Loading 3D assets...", progress: 80 },
+            { text: "Initializing Ground AR...", progress: 90 },
+            { text: "Ready for Ground AR!", progress: 100 }
+        ];
+
+        let currentLoadingStep = 0;
+
+        function updateLoading() {
+            if (currentLoadingStep < loadingSteps.length) {
+                const step = loadingSteps[currentLoadingStep];
+                loadingText.textContent = step.text;
+                currentLoadingStep++;
+                
+                setTimeout(updateLoading, 800);
+            } else {
+                // Hide loading screen after a short delay
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }, 1000);
+            }
+        }
+
+        // Start loading animation
+        setTimeout(updateLoading, 500);
+
+        // Update instruction steps
+        function updateInstructions(step) {
+            // Reset all steps
+            for (let i = 1; i <= 4; i++) {
+                const stepElement = document.getElementById(`step${i}`);
+                stepElement.classList.remove('active');
+            }
+            
+            // Activate current step
+            if (step <= 4) {
+                const stepElement = document.getElementById(`step${step}`);
+                stepElement.classList.add('active');
+            }
+        }
+
+        // Camera permission function
+        function requestCameraPermission() {
+            const permissionModal = document.getElementById('cameraPermission');
+            console.log('🔍 Requesting camera permission...');
+            updateLoadingText('Requesting camera access...');
+            updateInstructions(2);
+            
+            // Check if getUserMedia is available
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Your browser does not support camera access. Please use a modern browser like Chrome, Firefox, or Safari.');
+                return;
+            }
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment', // Use back camera on mobile
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            })
+                .then(function(stream) {
+                    console.log('✅ Camera access granted!');
+                    updateLoadingText('Camera access granted! Initializing Ground AR...');
+                    updateInstructions(2);
+                    
+                    // Let AR.js take over the camera stream
+                    console.log('🔄 Stopping manual stream to let AR.js handle camera...');
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    permissionModal.style.display = 'none';
+                    
+                    // Give AR.js time to initialize
+                    setTimeout(() => {
+                        console.log('🔄 Checking if AR.js has taken over camera...');
+                        const video = document.querySelector('video');
+                        if (video) {
+                            console.log('✅ AR.js video element found!');
+                            updateLoadingText('Ground AR ready! Point camera at ground');
+                            updateInstructions(2);
+                        } else {
+                            console.log('⏳ AR.js still initializing camera...');
+                            updateLoadingText('AR.js initializing camera...');
+                        }
+                    }, 2000);
+                })
+                .catch(function(error) {
+                    console.error('❌ Camera access denied:', error);
+                    updateLoadingText('Camera access denied. Please allow camera access.');
+                    alert('Camera access is required for Ground AR to work. Please:\n\n1. Click "Allow" when prompted\n2. Or check your browser settings\n3. Make sure no other app is using the camera\n4. Try refreshing the page');
+                });
+        }
+
+        // Auto-show permission modal after loading
+        setTimeout(function() {
+            const permissionModal = document.getElementById('cameraPermission');
+            console.log('Checking camera permission status...');
+            
+            // Always show the modal to ensure camera access
+            console.log('Showing camera permission modal');
+            permissionModal.style.display = 'block';
+            updateLoadingText('Camera permission required...');
+            updateInstructions(1);
+        }, 3000);
+
+        // Wait for AR.js to be fully loaded
+        function waitForARJS() {
+            return new Promise((resolve) => {
+                if (window.ARjs && window.ARjs.ArToolkitSource) {
+                    console.log('✅ AR.js already loaded');
+                    resolve();
+                } else {
+                    console.log('⏳ Waiting for AR.js to load...');
+                    const checkInterval = setInterval(() => {
+                        if (window.ARjs && window.ARjs.ArToolkitSource) {
+                            console.log('✅ AR.js loaded successfully');
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                    
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        console.log('⚠️ AR.js loading timeout');
+                        resolve();
+                    }, 10000);
+                }
+            });
+        }
+
+        // Place treasure on ground
+        function placeTreasureOnGround() {
+            if (treasurePlaced) return;
+            
+            console.log('🏴‍☠️ Placing treasure on ground...');
+            
+            const treasure = document.getElementById('treasureChest');
+            const glow = document.getElementById('treasureGlow');
+            const fallbackTreasure = document.getElementById('fallbackTreasure');
+            
+            // Position treasure in front of camera on ground
+            const camera = document.querySelector('[camera]');
+            if (camera) {
+                const cameraPosition = camera.getAttribute('position');
+                const cameraRotation = camera.getAttribute('rotation');
+                
+                // Calculate position in front of camera
+                const distance = 2; // 2 meters in front
+                const x = cameraPosition.x + Math.sin(cameraRotation.y * Math.PI / 180) * distance;
+                const z = cameraPosition.z + Math.cos(cameraRotation.y * Math.PI / 180) * distance;
+                
+                console.log('📍 Placing treasure at:', x, 0, z);
+                
+                // Check if GLB model loaded successfully
+                const gltfModel = treasure.components['gltf-model'];
+                if (!gltfModel || !gltfModel.data || gltfModel.data === '') {
+                    // Use fallback treasure chest
+                    console.log('Using fallback treasure chest');
+                    fallbackTreasure.setAttribute('visible', 'true');
+                    fallbackTreasure.setAttribute('position', `${x} 0 ${z}`);
+                    treasure.setAttribute('visible', 'false');
+                } else {
+                    // Use GLB model
+                    treasure.setAttribute('visible', 'true');
+                    treasure.setAttribute('position', `${x} 0 ${z}`);
+                }
+                
+                glow.setAttribute('visible', 'true');
+                glow.setAttribute('position', `${x} 0 ${z}`);
+                
+                treasurePlaced = true;
+                updateInstructions(4);
+                
+                // Show success message
+                const successMsg = document.createElement('div');
+                successMsg.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: rgba(39, 174, 96, 0.9);
+                    color: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    z-index: 1000;
+                    font-weight: bold;
+                    text-align: center;
+                `;
+                successMsg.innerHTML = '🎉 Treasure Placed!<br>Move around to explore!';
+                document.body.appendChild(successMsg);
+                
+                // Hide success message after 3 seconds
+                setTimeout(() => {
+                    if (successMsg.parentNode) {
+                        successMsg.parentNode.removeChild(successMsg);
+                    }
+                }, 3000);
+            }
+        }
+
+        // AR.js event listeners and camera setup
+        document.addEventListener('DOMContentLoaded', async function() {
+            const scene = document.getElementById('arScene');
+            const permissionModal = document.getElementById('cameraPermission');
+            
+            console.log('DOM loaded, setting up Ground AR...');
+            console.log('Scene element:', scene);
+            
+            // Wait for AR.js to be ready
+            await waitForARJS();
+
+            // Enhanced AR.js event listeners
+            scene.addEventListener('arjs-video-loaded', function() {
+                console.log('✅ AR.js video loaded successfully');
+                updateLoadingText('Camera ready! Point camera at ground');
+                updateInstructions(2);
+                isARReady = true;
+                
+                // Check video element
+                const video = document.querySelector('video');
+                if (video) {
+                    console.log('✅ Video element found:', video);
+                    console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                    console.log('Video readyState:', video.readyState);
+                }
+                
+                // Hide loading screen when video is actually loaded
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }, 1000);
+            });
+
+            scene.addEventListener('arjs-initialized', function() {
+                console.log('✅ AR.js initialized successfully');
+                updateLoadingText('Ground AR system ready!');
+                updateInstructions(2);
+            });
+
+            scene.addEventListener('loaded', function() {
+                console.log('✅ A-Frame scene loaded');
+                updateLoadingText('Scene loaded!');
+            });
+
+            // Listen for GLB model loading
+            const treasureChest = document.getElementById('treasureChest');
+            const fallbackTreasure = document.getElementById('fallbackTreasure');
+            
+            treasureChest.addEventListener('model-loaded', function() {
+                console.log('✅ GLB model loaded successfully');
+            });
+            
+            treasureChest.addEventListener('model-error', function() {
+                console.log('❌ GLB model failed to load, using fallback');
+                fallbackTreasure.setAttribute('visible', 'true');
+                treasureChest.setAttribute('visible', 'false');
+            });
+
+            // Add click/tap event to place treasure
+            scene.addEventListener('click', function() {
+                if (isARReady && !treasurePlaced) {
+                    console.log('👆 Screen tapped - placing treasure');
+                    placeTreasureOnGround();
+                }
+            });
+
+            // Add touch event for mobile
+            scene.addEventListener('touchstart', function(event) {
+                event.preventDefault();
+                if (isARReady && !treasurePlaced) {
+                    console.log('👆 Screen touched - placing treasure');
+                    placeTreasureOnGround();
+                }
+            });
+
+            // Show ground indicator when ready
+            setTimeout(() => {
+                if (isARReady && !treasurePlaced) {
+                    const groundIndicator = document.getElementById('groundIndicator');
+                    groundIndicator.style.display = 'block';
+                    updateInstructions(3);
+                }
+            }, 5000);
+
+            // Check if running on file:// protocol
+            if (window.location.protocol === 'file:') {
+                console.warn('Running on file:// protocol - AR.js may not work properly');
+                alert('This app must be run from a local server, not directly from file://. Please use a local server.');
+            }
+
+            // Enhanced camera check with debugging
+            setTimeout(function() {
+                const video = document.querySelector('video');
+                console.log('🔍 Checking camera status...');
+                console.log('Video element found:', !!video);
+                
+                if (video) {
+                    console.log('✅ Video element found');
+                    console.log('Video readyState:', video.readyState);
+                    console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                    console.log('Video src:', video.src);
+                    
+                    if (video.readyState >= 2) {
+                        console.log('✅ Camera is working properly');
+                        updateLoadingText('Ground AR ready! Tap to place treasure');
+                        updateInstructions(3);
+                        isARReady = true;
+                        
+                        // Show ground indicator
+                        const groundIndicator = document.getElementById('groundIndicator');
+                        groundIndicator.style.display = 'block';
+                        
+                    } else {
+                        console.log('⏳ Camera still initializing...');
+                        updateLoadingText('Camera initializing...');
+                    }
+                } else {
+                    console.log('❌ No video element found - AR.js may have failed to initialize camera');
+                    updateLoadingText('Camera not detected. Trying to reinitialize...');
+                }
+            }, 5000);
+
+            // Force hide loading screen after 15 seconds
+            setTimeout(function() {
+                if (!body.classList.contains('ar-ready')) {
+                    console.log('Force hiding loading screen after timeout');
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }
+            }, 15000);
+        });
+
+        function updateLoadingText(text) {
+            const loadingText = document.getElementById('loadingText');
+            if (loadingText) {
+                loadingText.textContent = text;
+            }
+        }
+
+        // Initialize instructions
+        updateInstructions(1);
+    </script>
+</body>
+</html>

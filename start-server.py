@@ -117,10 +117,10 @@ def main():
         kill_port_processes(fallback_port)
         
         try:
-            with socketserver.TCPServer(("", fallback_port), MyHTTPRequestHandler) as httpd:
+            with socketserver.TCPServer(("0.0.0.0", fallback_port), MyHTTPRequestHandler) as httpd:
                 print(f"✅ HTTP Server started!")
                 print(f"📱 Server running at: http://localhost:{fallback_port}")
-                print(f"📱 Mobile access: http://10.50.7.23:{fallback_port}")
+                print(f"📱 Mobile access: http://[YOUR_IP]:{fallback_port}")
                 print(f"⚠️  Note: Some features may not work without HTTPS")
                 print(f"⏹️  Press Ctrl+C to stop the server")
                 print("-" * 50)
@@ -138,7 +138,7 @@ def main():
         return
     
     try:
-        with socketserver.TCPServer(("", PORT), MyHTTPRequestHandler) as httpd:
+        with socketserver.TCPServer(("0.0.0.0", PORT), MyHTTPRequestHandler) as httpd:
             # Create SSL context
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.load_cert_chain(cert_file, key_file)
@@ -148,7 +148,7 @@ def main():
             
             print(f"✅ HTTPS Server started successfully!")
             print(f"📱 Server running at: https://localhost:{PORT}")
-            print(f"📱 Mobile access: https://10.50.7.23:{PORT}")
+            print(f"📱 Mobile access: https://[YOUR_IP]:{PORT}")
             print(f"🎯 Open your browser and go to: https://localhost:{PORT}")
             print(f"🔒 HTTPS enabled for device sensor access!")
             print(f"⚠️  Browser will show security warning - click 'Advanced' and 'Proceed'")

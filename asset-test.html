@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR Asset Test - Treasure Chest</title>
+    
+    <!-- A-Frame and AR.js CDN -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.0/aframe/build/aframe-ar.min.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            overflow: hidden;
+        }
+
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: white;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid #f39c12;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 18px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        /* Info Overlay */
+        .info-overlay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .info-overlay h2 {
+            margin: 0 0 10px 0;
+            color: #f39c12;
+        }
+
+        .info-overlay p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .marker-link {
+            color: #f39c12;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .marker-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Asset Status Panel */
+        .asset-status {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .asset-status h3 {
+            margin: 0 0 10px 0;
+            color: #f39c12;
+        }
+
+        .status-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .status-success {
+            background: rgba(39, 174, 96, 0.3);
+            color: #2ecc71;
+        }
+
+        .status-error {
+            background: rgba(231, 76, 60, 0.3);
+            color: #e74c3c;
+        }
+
+        .status-warning {
+            background: rgba(243, 156, 18, 0.3);
+            color: #f39c12;
+        }
+
+        /* Hide elements when AR is ready */
+        .ar-ready .loading-screen {
+            display: none;
+        }
+
+        /* Camera Permission Button */
+        .camera-permission {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 1001;
+            display: none;
+        }
+
+        .camera-permission button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+
+        .camera-permission button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loadingText">Loading AR Asset Test...</div>
+    </div>
+
+    <!-- Info Overlay -->
+    <div class="info-overlay">
+        <h2>🧪 AR Asset Test</h2>
+        <p>Testing treasure chest GLB model loading and display</p>
+        <p>Point your camera at the Hiro marker to see the treasure chest!</p>
+        <p>Download printable Hiro marker: <a href="https://jeromeetienne.github.io/AR.js/data/images/HIRO.jpg" class="marker-link" target="_blank">Click here</a></p>
+    </div>
+
+    <!-- Asset Status Panel -->
+    <div class="asset-status" id="assetStatus">
+        <h3>📊 Asset Loading Status</h3>
+        <div id="statusList">
+            <div class="status-item status-warning">⏳ Initializing...</div>
+        </div>
+    </div>
+
+    <!-- Camera Permission Modal -->
+    <div class="camera-permission" id="cameraPermission">
+        <h3>📷 Camera Access Required</h3>
+        <p>This AR asset test needs access to your camera to work properly.</p>
+        <button onclick="requestCameraPermission()">Allow Camera Access</button>
+    </div>
+
+    <!-- A-Frame Scene -->
+    <a-scene 
+        vr-mode-ui="enabled: false" 
+        renderer="logarithmicDepthBuffer: true;" 
+        embedded 
+        arjs="sourceType: webcam; debugUIEnabled: true;"
+        id="arScene">
+        
+        <!-- Camera at scene level for webcam access -->
+        <a-entity camera></a-entity>
+        
+        <!-- AR Marker -->
+        <a-marker preset="hiro" id="hiro-marker">
+            
+            <!-- Primary Treasure Chest GLB Model -->
+            <a-entity 
+                id="treasureChestGLB"
+                gltf-model="url(./asserts/treasure_chest.glb)"
+                scale="0.5 0.5 0.5"
+                position="0 0.5 0"
+                rotation="0 0 0"
+                visible="true"
+                animation__rotate="property: rotation; to: 0 360 0; loop: true; dur: 10000"
+                animation__bounce="property: position; to: 0 0.7 0; dir: alternate; loop: true; dur: 2000">
+            </a-entity>
+            
+            <!-- Fallback Treasure Chest (if GLB fails to load) -->
+            <a-entity id="fallbackTreasure" visible="false">
+                <!-- Chest Body -->
+                <a-box 
+                    position="0 0.5 0" 
+                    rotation="0 45 0" 
+                    scale="0.5 0.5 0.5"
+                    material="color: #8B4513; metalness: 0.3; roughness: 0.7"
+                    animation__rotate="property: rotation; to: 0 405 0; loop: true; dur: 10000">
+                </a-box>
+                
+                <!-- Chest Lid -->
+                <a-box 
+                    position="0 0.75 0" 
+                    rotation="0 45 0" 
+                    scale="0.5 0.1 0.5"
+                    material="color: #B8860B; metalness: 0.8; roughness: 0.2;">
+                </a-box>
+                
+                <!-- Chest Lock -->
+                <a-cylinder 
+                    position="0 0.7 0.2" 
+                    rotation="90 0 0" 
+                    radius="0.05" 
+                    height="0.1"
+                    material="color: #8B4513; metalness: 0.9; roughness: 0.1;">
+                </a-cylinder>
+                
+                <!-- Sparkle Effects -->
+                <a-sphere 
+                    position="0.3 0.8 0.3" 
+                    radius="0.02" 
+                    material="color: #f39c12; emissive: #f39c12; emissiveIntensity: 0.5"
+                    animation="property: scale; to: 1.5 1.5 1.5; loop: true; dur: 2000; dir: alternate">
+                </a-sphere>
+                
+                <a-sphere 
+                    position="-0.2 0.9 0.1" 
+                    radius="0.015" 
+                    material="color: #f39c12; emissive: #f39c12; emissiveIntensity: 0.3"
+                    animation="property: scale; to: 2 2 2; loop: true; dur: 1500; dir: alternate; delay: 500">
+                </a-sphere>
+                
+                <a-sphere 
+                    position="0.1 0.7 -0.2" 
+                    radius="0.02" 
+                    material="color: #f39c12; emissive: #f39c12; emissiveIntensity: 0.4"
+                    animation="property: scale; to: 1.8 1.8 1.8; loop: true; dur: 1800; dir: alternate; delay: 1000">
+                </a-sphere>
+            </a-entity>
+            
+            <!-- Test Objects for Comparison -->
+            <a-box 
+                position="1 0.5 0" 
+                scale="0.2 0.2 0.2"
+                material="color: red;"
+                animation="property: rotation; to: 0 360 0; loop: true; dur: 5000">
+            </a-box>
+            
+            <a-sphere 
+                position="-1 0.5 0" 
+                radius="0.1"
+                material="color: blue;"
+                animation="property: position; to: -1 0.7 0; dir: alternate; loop: true; dur: 1500">
+            </a-sphere>
+        </a-marker>
+
+        <!-- Lighting -->
+        <a-light type="ambient" color="#404040"></a-light>
+        <a-light type="directional" position="0 1 0" color="#ffffff" intensity="0.8"></a-light>
+        <a-light type="point" position="0 2 0" color="#f39c12" intensity="0.5"></a-light>
+    </a-scene>
+
+    <script>
+        // Asset loading status tracking
+        let assetStatus = {
+            arjsLoaded: false,
+            sceneLoaded: false,
+            cameraReady: false,
+            glbModelLoaded: false,
+            glbModelError: false,
+            markerDetected: false
+        };
+
+        // Update status display
+        function updateStatusDisplay() {
+            const statusList = document.getElementById('statusList');
+            statusList.innerHTML = '';
+            
+            // AR.js Status
+            statusList.innerHTML += `<div class="status-item ${assetStatus.arjsLoaded ? 'status-success' : 'status-warning'}">
+                ${assetStatus.arjsLoaded ? '✅' : '⏳'} AR.js Loaded
+            </div>`;
+            
+            // Scene Status
+            statusList.innerHTML += `<div class="status-item ${assetStatus.sceneLoaded ? 'status-success' : 'status-warning'}">
+                ${assetStatus.sceneLoaded ? '✅' : '⏳'} A-Frame Scene Loaded
+            </div>`;
+            
+            // Camera Status
+            statusList.innerHTML += `<div class="status-item ${assetStatus.cameraReady ? 'status-success' : 'status-warning'}">
+                ${assetStatus.cameraReady ? '✅' : '⏳'} Camera Ready
+            </div>`;
+            
+            // GLB Model Status
+            if (assetStatus.glbModelError) {
+                statusList.innerHTML += `<div class="status-item status-error">
+                    ❌ GLB Model Failed - Using Fallback
+                </div>`;
+            } else if (assetStatus.glbModelLoaded) {
+                statusList.innerHTML += `<div class="status-item status-success">
+                    ✅ GLB Model Loaded Successfully
+                </div>`;
+            } else {
+                statusList.innerHTML += `<div class="status-item status-warning">
+                    ⏳ GLB Model Loading...
+                </div>`;
+            }
+            
+            // Marker Detection Status
+            statusList.innerHTML += `<div class="status-item ${assetStatus.markerDetected ? 'status-success' : 'status-warning'}">
+                ${assetStatus.markerDetected ? '✅' : '⏳'} Marker Detection
+            </div>`;
+        }
+
+        // Loading progress simulation
+        let progress = 0;
+        const loadingText = document.getElementById('loadingText');
+        const loadingScreen = document.getElementById('loadingScreen');
+        const body = document.body;
+
+        const loadingSteps = [
+            { text: "Loading AR.js...", progress: 20 },
+            { text: "Initializing A-Frame...", progress: 40 },
+            { text: "Setting up camera...", progress: 60 },
+            { text: "Loading 3D assets...", progress: 80 },
+            { text: "Initializing AR system...", progress: 90 },
+            { text: "Ready for AR asset test!", progress: 100 }
+        ];
+
+        let currentStep = 0;
+
+        function updateLoading() {
+            if (currentStep < loadingSteps.length) {
+                const step = loadingSteps[currentStep];
+                loadingText.textContent = step.text;
+                currentStep++;
+                
+                setTimeout(updateLoading, 800);
+            } else {
+                // Hide loading screen after a short delay
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }, 1000);
+            }
+        }
+
+        // Start loading animation
+        setTimeout(updateLoading, 500);
+
+        // Camera permission function
+        function requestCameraPermission() {
+            const permissionModal = document.getElementById('cameraPermission');
+            console.log('🔍 Requesting camera permission...');
+            updateLoadingText('Requesting camera access...');
+            
+            // Check if getUserMedia is available
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Your browser does not support camera access. Please use a modern browser like Chrome, Firefox, or Safari.');
+                return;
+            }
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment', // Use back camera on mobile
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            })
+                .then(function(stream) {
+                    console.log('✅ Camera access granted!');
+                    updateLoadingText('Camera access granted! Initializing AR...');
+                    
+                    // Let AR.js take over the camera stream
+                    console.log('🔄 Stopping manual stream to let AR.js handle camera...');
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    permissionModal.style.display = 'none';
+                    assetStatus.cameraReady = true;
+                    updateStatusDisplay();
+                    
+                    // Give AR.js time to initialize
+                    setTimeout(() => {
+                        console.log('🔄 Checking if AR.js has taken over camera...');
+                        const video = document.querySelector('video');
+                        if (video) {
+                            console.log('✅ AR.js video element found!');
+                            updateLoadingText('AR system ready! Point at Hiro marker');
+                        } else {
+                            console.log('⏳ AR.js still initializing camera...');
+                            updateLoadingText('AR.js initializing camera...');
+                        }
+                    }, 2000);
+                })
+                .catch(function(error) {
+                    console.error('❌ Camera access denied:', error);
+                    updateLoadingText('Camera access denied. Please allow camera access.');
+                    alert('Camera access is required for AR to work. Please:\n\n1. Click "Allow" when prompted\n2. Or check your browser settings\n3. Make sure no other app is using the camera\n4. Try refreshing the page');
+                });
+        }
+
+        // Auto-show permission modal after loading
+        setTimeout(function() {
+            const permissionModal = document.getElementById('cameraPermission');
+            console.log('Checking camera permission status...');
+            
+            // Always show the modal to ensure camera access
+            console.log('Showing camera permission modal');
+            permissionModal.style.display = 'block';
+            updateLoadingText('Camera permission required...');
+        }, 3000);
+
+        // Wait for AR.js to be fully loaded
+        function waitForARJS() {
+            return new Promise((resolve) => {
+                if (window.ARjs && window.ARjs.ArToolkitSource) {
+                    console.log('✅ AR.js already loaded');
+                    assetStatus.arjsLoaded = true;
+                    updateStatusDisplay();
+                    resolve();
+                } else {
+                    console.log('⏳ Waiting for AR.js to load...');
+                    const checkInterval = setInterval(() => {
+                        if (window.ARjs && window.ARjs.ArToolkitSource) {
+                            console.log('✅ AR.js loaded successfully');
+                            assetStatus.arjsLoaded = true;
+                            updateStatusDisplay();
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                    
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        console.log('⚠️ AR.js loading timeout');
+                        resolve();
+                    }, 10000);
+                }
+            });
+        }
+
+        // AR.js event listeners and camera setup
+        document.addEventListener('DOMContentLoaded', async function() {
+            const scene = document.getElementById('arScene');
+            const permissionModal = document.getElementById('cameraPermission');
+            
+            console.log('DOM loaded, setting up AR asset test...');
+            console.log('Scene element:', scene);
+            
+            // Wait for AR.js to be ready
+            await waitForARJS();
+
+            // Enhanced AR.js event listeners
+            scene.addEventListener('arjs-video-loaded', function() {
+                console.log('✅ AR.js video loaded successfully');
+                updateLoadingText('Camera ready! Point at Hiro marker');
+                assetStatus.cameraReady = true;
+                updateStatusDisplay();
+                
+                // Check video element
+                const video = document.querySelector('video');
+                if (video) {
+                    console.log('✅ Video element found:', video);
+                    console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                    console.log('Video readyState:', video.readyState);
+                }
+                
+                // Hide loading screen when video is actually loaded
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }, 1000);
+            });
+
+            scene.addEventListener('arjs-initialized', function() {
+                console.log('✅ AR.js initialized successfully');
+                updateLoadingText('AR system ready!');
+            });
+
+            scene.addEventListener('loaded', function() {
+                console.log('✅ A-Frame scene loaded');
+                updateLoadingText('Scene loaded!');
+                assetStatus.sceneLoaded = true;
+                updateStatusDisplay();
+            });
+
+            // Listen for GLB model loading
+            const treasureChestGLB = document.getElementById('treasureChestGLB');
+            const fallbackTreasure = document.getElementById('fallbackTreasure');
+            
+            treasureChestGLB.addEventListener('model-loaded', function() {
+                console.log('✅ GLB model loaded successfully');
+                assetStatus.glbModelLoaded = true;
+                updateStatusDisplay();
+            });
+            
+            treasureChestGLB.addEventListener('model-error', function() {
+                console.log('❌ GLB model failed to load, using fallback');
+                assetStatus.glbModelError = true;
+                fallbackTreasure.setAttribute('visible', 'true');
+                treasureChestGLB.setAttribute('visible', 'false');
+                updateStatusDisplay();
+            });
+
+            // Listen for marker found
+            const marker = document.getElementById('hiro-marker');
+            marker.addEventListener('markerFound', function(event) {
+                console.log('🎯 Hiro marker detected!');
+                updateLoadingText('🎯 Marker detected! AR asset test is working!');
+                assetStatus.markerDetected = true;
+                updateStatusDisplay();
+                
+                // Add visual feedback
+                const markerInfo = document.createElement('div');
+                markerInfo.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(0, 255, 0, 0.8);
+                    color: white;
+                    padding: 10px;
+                    border-radius: 5px;
+                    z-index: 1000;
+                    font-weight: bold;
+                `;
+                markerInfo.textContent = '🎯 MARKER DETECTED!';
+                document.body.appendChild(markerInfo);
+                
+                // Hide loading screen when marker is found
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }, 1000);
+            });
+
+            // Listen for marker lost
+            marker.addEventListener('markerLost', function(event) {
+                console.log('❌ Hiro marker lost');
+                updateLoadingText('Point camera at Hiro marker...');
+                assetStatus.markerDetected = false;
+                updateStatusDisplay();
+                
+                // Remove marker detection feedback
+                const existingInfo = document.querySelector('[style*="MARKER DETECTED"]');
+                if (existingInfo) {
+                    existingInfo.remove();
+                }
+            });
+
+            // Check if running on file:// protocol
+            if (window.location.protocol === 'file:') {
+                console.warn('Running on file:// protocol - AR.js may not work properly');
+                alert('This app must be run from a local server, not directly from file://. Please use a local server.');
+            }
+
+            // Enhanced camera check with debugging and fallback
+            setTimeout(function() {
+                const video = document.querySelector('video');
+                console.log('🔍 Checking camera status...');
+                console.log('Video element found:', !!video);
+                
+                if (video) {
+                    console.log('✅ Video element found');
+                    console.log('Video readyState:', video.readyState);
+                    console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                    console.log('Video src:', video.src);
+                    
+                    if (video.readyState >= 2) {
+                        console.log('✅ Camera is working properly');
+                        updateLoadingText('Camera ready! Point at Hiro marker');
+                        assetStatus.cameraReady = true;
+                        updateStatusDisplay();
+                        
+                        // Simple marker detection status
+                        console.log('✅ Camera ready - marker detection should work now!');
+                        
+                    } else {
+                        console.log('⏳ Camera still initializing...');
+                        updateLoadingText('Camera initializing...');
+                    }
+                } else {
+                    console.log('❌ No video element found - AR.js may have failed to initialize camera');
+                    updateLoadingText('Camera not detected. Trying to reinitialize...');
+                }
+            }, 5000);
+
+            // Force hide loading screen after 15 seconds
+            setTimeout(function() {
+                if (!body.classList.contains('ar-ready')) {
+                    console.log('Force hiding loading screen after timeout');
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        body.classList.add('ar-ready');
+                    }, 500);
+                }
+            }, 15000);
+        });
+
+        function updateLoadingText(text) {
+            const loadingText = document.getElementById('loadingText');
+            if (loadingText) {
+                loadingText.textContent = text;
+            }
+        }
+
+        // Add some interactive effects
+        document.addEventListener('click', function() {
+            // Add click effect to treasure chest
+            const chest = document.querySelector('#treasureChestGLB, #fallbackTreasure');
+            if (chest) {
+                chest.setAttribute('animation__click', 'property: scale; to: 0.6 0.6 0.6; dur: 200; dir: alternate');
+                setTimeout(() => {
+                    chest.removeAttribute('animation__click');
+                }, 400);
+            }
+        });
+
+        // Initialize status display
+        updateStatusDisplay();
+    </script>
+</body>
+</html>
