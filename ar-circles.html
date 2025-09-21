@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>AR Waypoints + Beacon</title>
+
+  <!-- A-Frame + AR.js -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    :root { color-scheme: dark; }
+    html,body { margin:0; height:100%; background:#000; color:#fff; font-family:-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial; }
+    #hud { position:fixed; top:env(safe-area-inset-top,10px); left:10px; right:10px; display:flex; gap:8px; flex-wrap:wrap; z-index:10; }
+    .pill { background:#0007; border:1px solid #ffffff2a; padding:6px 10px; border-radius:999px; font-size:13px; }
+    #footer { position:fixed; bottom:env(safe-area-inset-bottom,8px); left:8px; right:8px; text-align:center; font-size:12px; opacity:.75; z-index:10 }
+    #toast { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(env(safe-area-inset-bottom,8px)+48px);
+             background:#0b0f; border:1px solid #fff2; color:#fff; padding:10px 14px; border-radius:12px; z-index:11; display:none;}
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="pill">🎯 <span id="dest">--</span></div>
+    <div class="pill">📍 <span id="gps">Waiting…</span></div>
+    <div class="pill">🚶 <span id="move">idle</span></div>
+    <div class="pill" id="dbg">acc -- m, v -- m/s</div>
+    <div class="pill" id="dist">dist -- m</div>
+  </div>
+  <div id="toast">✅ Reached checkpoint!</div>
+  <div id="footer">Use HTTPS, allow Camera + Location. First fix is faster outdoors.</div>
+
+  <a-scene vr-mode-ui="enabled:false" renderer="antialias:true; alpha:true" embedded
+           arjs="sourceType:webcam; videoTexture:true; debugUIEnabled:false;">
+    <a-entity id="circle-path"></a-entity>
+    <a-camera gps-camera></a-camera>
+  </a-scene>
+
+  <script>
+  // ===== DESTINATION (Albert R. Mann Library) =====
+  const CHALLENGES = [{ name: 'Mann Library', lat: 42.4483176, lon: -76.4765426 }];
+  let idx = 0;
+
+  // ===== Tuning =====
+  const ARRIVAL_RADIUS_M = 10;
+  const WAYPOINT_COUNT   = 5;
+  const WAYPOINT_STEP_M  = 1;      // 1 m spacing
+  const ADVANCE_AFTER_M  = 5;      // refresh every ~5 m you move
+  const IDLE_RESHOW_MS   = 5000;
+  const HIDE_WHILE_MOVING = false;
+
+  // Motion heuristics
+  const ACC_OK_MAX   = 30;
+  const MOVE_MIN_D   = 2.5;
+  const MOVE_MAX_DT  = 4000;
+  const SPEED_CUTOFF = 0.7;
+  const EMA_ALPHA    = 0.35;
+
+  // ===== UI refs =====
+  const gpsEl  = document.getElementById('gps');
+  const moveEl = document.getElementById('move');
+  const destEl = document.getElementById('dest');
+  const dbgEl  = document.getElementById('dbg');
+  const distEl = document.getElementById('dist');
+  const toast  = document.getElementById('toast');
+
+  const pathEntity = document.getElementById('circle-path');
+  const scene = document.querySelector('a-scene');
+
+  function target(){ return CHALLENGES[idx]; }
+  function setDestHUD(){ const t=target(); destEl.textContent = `${t.name} • ${t.lat.toFixed(6)}, ${t.lon.toFixed(6)}`; }
+  setDestHUD();
+
+  // ===== Geo utils =====
+  const toRad = d=>d*Math.PI/180, toDeg = r=>r*180/Math.PI;
+
+  // meters per degree – good approximation for small steps
+  function metersPerDegLat(latDeg){
+    const lat = toRad(latDeg);
+    return 111132.954 - 559.822*Math.cos(2*lat) + 1.175*Math.cos(4*lat);
+  }
+  function metersPerDegLon(latDeg){
+    const lat = toRad(latDeg);
+    return 111132.954 * Math.cos(lat); // ≈ 111320*cos(lat)
+  }
+
+  function haversineMeters(aLat,aLon,bLat,bLon){
+    const R=6371000, dLat=toRad(bLat-aLat), dLon=toRad(bLon-aLon);
+    const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.sqrt(s));
+  }
+
+  // ===== Rendering =====
+  function clearChildren(el){ while(el.firstChild) el.removeChild(el.firstChild); }
+  function setCirclesVisible(v){ pathEntity.setAttribute('visible', v?'true':'false'); }
+
+  // Draw next 5 m along the straight line to target using ENU vector (no compass involved)
+  function drawSegment(fromLat, fromLon){
+    clearChildren(pathEntity);
+    const t = target();
+
+    // Geo delta → meters
+    const mPerLat = metersPerDegLat(fromLat);
+    const mPerLon = metersPerDegLon(fromLat);
+    const dLatDeg = t.lat - fromLat;
+    const dLonDeg = t.lon - fromLon;
+    const dN = dLatDeg * mPerLat;  // north (+)
+    const dE = dLonDeg * mPerLon;  // east  (+)
+
+    const distM = Math.hypot(dE, dN);
+    if (!isFinite(distM) || distM < 0.001) return;
+
+    // unit vector to target
+    const uE = dE / distM, uN = dN / distM;
+
+    for(let i=1;i<=WAYPOINT_COUNT;i++){
+      const step = i * WAYPOINT_STEP_M;
+      const lat = fromLat + (uN*step)/mPerLat;
+      const lon = fromLon + (uE*step)/mPerLon;
+
+      const c = document.createElement('a-entity');
+      c.setAttribute('gps-entity-place', `latitude:${lat}; longitude:${lon}`);
+      c.setAttribute('geometry','primitive: circle; radius: 0.45');
+      c.setAttribute('material','color:#3a86ff; opacity:0.88; side:double; emissive:#3a86ff; emissiveIntensity:1');
+      c.setAttribute('rotation','-90 0 0');
+      c.setAttribute('animation__pulse','property: scale; dir: alternate; dur: 900; loop: true; to: 1.25 1.25 1.25; from: 1 1 1');
+      pathEntity.appendChild(c);
+    }
+  }
+
+  // Big red beacon at the true destination
+  let beacon=null;
+  function upsertBeacon(){
+    const t=target();
+    if(!beacon){
+      beacon=document.createElement('a-entity'); beacon.id='finishBeacon'; scene.appendChild(beacon);
+      const pillar=document.createElement('a-cylinder');
+      pillar.setAttribute('height','90'); pillar.setAttribute('radius','1.0'); pillar.setAttribute('position','0 45 0');
+      pillar.setAttribute('material','color:#ff2b2b; opacity:0.26; emissive:#ff2b2b; emissiveIntensity:1');
+      beacon.appendChild(pillar);
+      const halo=document.createElement('a-ring');
+      halo.setAttribute('radius-inner','4.5'); halo.setAttribute('radius-outer','7.0');
+      halo.setAttribute('position','0 80 0'); halo.setAttribute('rotation','-90 0 0');
+      halo.setAttribute('material','color:#ff2b2b; opacity:0.85; side:double; emissive:#ff2b2b; emissiveIntensity:1');
+      halo.setAttribute('animation__spin','property: rotation; to: -90 360 0; loop: true; dur: 4000; easing: linear');
+      beacon.appendChild(halo);
+    }
+    beacon.setAttribute('gps-entity-place', `latitude:${t.lat}; longitude:${t.lon}`);
+  }
+  upsertBeacon();
+
+  // Cyan start pin once
+  let startPinPlaced=false;
+  function placeStartPin(lat,lon){
+    if(startPinPlaced) return; startPinPlaced=true;
+    const pin=document.createElement('a-entity');
+    pin.setAttribute('gps-entity-place',`latitude:${lat}; longitude:${lon}`);
+    const body=document.createElement('a-cylinder');
+    body.setAttribute('height','4'); body.setAttribute('radius','0.4'); body.setAttribute('position','0 2 0');
+    body.setAttribute('material','color:#00e5ff; opacity:0.7; emissive:#00e5ff; emissiveIntensity:1');
+    pin.appendChild(body); scene.appendChild(pin);
+  }
+
+  // Toast
+  let toastTimer=null;
+  function showToast(msg){ toast.textContent='✅ '+msg; toast.style.display='block';
+                           clearTimeout(toastTimer); toastTimer=setTimeout(()=>toast.style.display='none',3000); }
+
+  // ===== Motion/logic =====
+  let segStart=null, lastFix=null, lastIdleShowTs=0, emaSpeed=0, latestAcc=null;
+
+  // keep accuracy fresh without mutating lastFix’s lat/lon
+  navigator.geolocation.watchPosition(
+    p => { latestAcc = p.coords.accuracy; },
+    () => {},
+    { enableHighAccuracy:true, maximumAge:0, timeout:15000 }
+  );
+
+  function computeMotion(newFix){
+    if(!lastFix) return {moving:false, v:0, d:0, acc:newFix.acc ?? 999};
+    const d  = haversineMeters(lastFix.lat,lastFix.lon,newFix.lat,newFix.lon);
+    const dt = Math.max(1, newFix.t - (lastFix.t||newFix.t-1));
+    const vInst = d/(dt/1000);
+    const vGPS  = (typeof newFix.spd==='number' && isFinite(newFix.spd)) ? Math.max(0,newFix.spd) : vInst;
+    emaSpeed = isFinite(emaSpeed) ? (EMA_ALPHA*vGPS + (1-EMA_ALPHA)*emaSpeed) : vGPS;
+    const acc = Math.min(newFix.acc ?? Infinity, lastFix.acc ?? Infinity);
+    const movingNow = (acc <= ACC_OK_MAX) && ((d>MOVE_MIN_D && dt<MOVE_MAX_DT) || emaSpeed>=SPEED_CUTOFF);
+    return {moving:movingNow, v:emaSpeed, d, acc};
+  }
+
+  window.addEventListener('gps-camera-update-position', (e)=>{
+    const p = e.detail.position;
+    const now = Date.now();
+    const fix = {
+      lat: p.latitude,
+      lon: p.longitude,
+      acc: (typeof p.accuracy==='number' ? p.accuracy : (latestAcc ?? lastFix?.acc ?? 999)),
+      spd: p.speed,
+      t: now
+    };
+
+    gpsEl.textContent = `${fix.lat.toFixed(6)}, ${fix.lon.toFixed(6)}`;
+    placeStartPin(fix.lat, fix.lon);
+
+    if(!segStart){
+      segStart={lat:fix.lat, lon:fix.lon};
+      drawSegment(segStart.lat, segStart.lon);
+      lastIdleShowTs=now;
+    }
+
+    const m = computeMotion(fix);
+    moveEl.textContent = m.moving ? 'moving' : 'idle';
+    dbgEl.textContent  = `acc ${Math.round(fix.acc)} m, v ${isFinite(m.v)?m.v.toFixed(2):'0.00'} m/s`;
+
+    const t = target();
+    const distToTarget = haversineMeters(fix.lat, fix.lon, t.lat, t.lon);
+    distEl.textContent = `dist ${Math.round(distToTarget)} m`;
+
+    // visibility policy
+    if (HIDE_WHILE_MOVING) {
+      if (m.moving) setCirclesVisible(false);
+      else if (now - lastIdleShowTs >= IDLE_RESHOW_MS) { setCirclesVisible(true); lastIdleShowTs = now; }
+    } else {
+      setCirclesVisible(true); lastIdleShowTs = now;
+    }
+
+    // advance the “next 5 m” segment as you move
+    const moved = haversineMeters(segStart.lat, segStart.lon, fix.lat, fix.lon);
+    if (moved >= ADVANCE_AFTER_M - 0.5) {
+      segStart = {lat:fix.lat, lon:fix.lon};
+      drawSegment(segStart.lat, segStart.lon);
+    }
+
+    if (distToTarget <= ARRIVAL_RADIUS_M) showToast(`Reached ${t.name}!`);
+    lastFix = fix;
+  });
+
+  setTimeout(()=>{ if(!lastFix) gpsEl.textContent='GPS not updating. Use HTTPS, allow location, try outdoors.'; }, 8000);
+  </script>
+</body>
+</html>
